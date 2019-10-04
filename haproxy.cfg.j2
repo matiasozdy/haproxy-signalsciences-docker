@@ -1,0 +1,83 @@
+global
+        stats socket /run/haproxy-stats.sock mode 660 level admin
+        stats timeout 30s
+
+        log stdout format raw local0 info
+
+        {% if SIGSCI_ENABLED == "true" %}
+        lua-load /usr/local/etc/haproxy/SignalSciences.lua
+        lua-load /usr/local/etc/haproxy/fourosix.lua
+        {% endif %}
+        tune.ssl.default-dh-param 2048
+        daemon
+
+defaults
+        log     global
+        mode    http
+        option  redispatch
+        retries 1
+
+        option  httplog
+        option  dontlognull
+        option  abortonclose
+
+        log-format "{ \"timestamp\": \"%[date,ltime(%Y-%m-%dT%H:%M:%S+00:00)]\", \"host\": \"%[capture.req.hdr(1)]\", \"remote_addr\": \"%[capture.req.hdr(3),json(utf8s)]\", \"remote_user\": \"\", \"body_bytes_sent\": \"%U\", \"request_time\": \"%Tq\", \"request_id\": \"%ID\", \"nginx_status\": \"%ST\", \"hostname\": \"%H\", \"server_protocol\": \"%HV\", \"request_uri\": \"%HP\", \"request_method\": \"%HM\", \"http_referrer\": \"%[capture.req.hdr(2)]\", \"http_origin\": \"\", \"http_user_agent\": \"%[capture.req.hdr(0),json(utf8s)]\", \"sigsci_blocking\" \"%[capture.req.hdr(4)]\" }"
+
+        timeout connect 1000
+        timeout client  50000
+        timeout server  50000
+
+        errorfile 400 /usr/local/etc/haproxy/errors/400.http
+        errorfile 403 /usr/local/etc/haproxy/errors/403.http
+        errorfile 408 /usr/local/etc/haproxy/errors/408.http
+        errorfile 500 /usr/local/etc/haproxy/errors/500.http
+        errorfile 502 /usr/local/etc/haproxy/errors/502.http
+        errorfile 503 /usr/local/etc/haproxy/errors/503.http
+        errorfile 504 /usr/local/etc/haproxy/errors/504.http
+
+frontend https_service
+
+  bind :8080
+  # Redirect all HTTP traffic to HTTPS
+  redirect scheme https if { hdr_end(Host) -i domain.com } !{ ssl_fc }
+
+  bind *:8443 ssl crt /etc/certs/service-proxy.pem
+  mode http
+  monitor-uri /health
+
+  unique-id-format %{+X}o\ %ci:%cp_%fi:%fp_%Ts_%rt:%pid
+  unique-id-header X-Request-ID
+
+  http-request capture req.hdr(User-Agent) len 128
+  http-request capture req.hdr(Host) len 128
+  http-request capture req.hdr(Referer) len 128
+  http-request capture req.hdr(X-Forwarded-For) len 128
+
+  {% if SIGSCI_ENABLED == "true" %}
+  http-request lua.sigsci_prerequest
+  acl signalblocked req.hdr(X-SigSci-Blocking) -i yes
+  http-request use-service lua.fourosix if signalblocked 
+  http-response lua.sigsci_postrequest
+  {% endif %}
+
+  http-request capture req.hdr(X-SigSci-Blocking) len 128
+
+  default_backend https_service
+
+backend https_service
+  mode http
+  balance roundrobin
+  option forwardfor
+
+  acl is_options method OPTIONS
+  http-response set-status 200 if is_options
+  http-request add-header X-Forwarded-Host %[req.hdr(Host)]
+  http-request set-header X-Real-IP %[hdr_ip(x-forwarded-for,1)]
+
+  server proxy proxy.{{ ROOT_DOMAIN }}:443 ssl verify required ca-file /etc/ssl/certs/ca-certificates.crt
+
+listen stats
+bind *:16000
+    mode http
+    stats enable
+    stats uri /stats

@@ -1,0 +1,13 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>406 error.</title>
+</head>
+<body>
+      <h1>A problem occured.</h1>
+        <p>Our security system blocked your request because it looked malicious.</p>
+        <p>There are a number of reasons this might have happened. But most likely our system detected malicious traffic coming from your current IP address.</p>
+</body>
+</html>

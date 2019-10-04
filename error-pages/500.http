@@ -1,0 +1,10 @@
+HTTP/1.0 500 Internal Server Error
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html
+
+<html>
+	<body>
+				<p><b>Ooops something went wrong! </b><br>Please try again in a few moments...</p> 
+	</body>
+</html>
